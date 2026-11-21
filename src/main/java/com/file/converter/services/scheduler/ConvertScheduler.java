@@ -3,13 +3,13 @@ package com.file.converter.services.scheduler;
 import com.file.converter.constants.Constants;
 import com.file.converter.entity.InboxMessage;
 import com.file.converter.entity.OutBoxMessage;
-import com.file.converter.exceptions.FailedException;
 import com.file.converter.repository.ConsumerInboxRepository;
 import com.file.converter.repository.OutBoxMessageRepository;
 import com.file.converter.services.FileService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
@@ -34,10 +34,10 @@ public class ConvertScheduler {
     @Scheduled(fixedDelayString = "${app.scheduler.rate-ms}")
     @SchedulerLock(name = "InboxPublisher", lockAtMostFor = "PT30S", lockAtLeastFor = "PT1S")
     public void handleEventToConvert(){
-        List<InboxMessage> listOfNotProceedEvents = consumerInboxRepository.findByProceedFalseAndRetryCountLessThan(Constants.MAX_RETRY_CONSUMER);
+        List<InboxMessage> listOfNotProceedEvents = consumerInboxRepository.findByProceedFalseAndRetryCountLessThan(Constants.MAX_RETRY_CONSUMER, PageRequest.of(0,Constants.BATCHSIZE));
         for(InboxMessage inboxMessage: listOfNotProceedEvents){
             try{
-                fileService.convertFile(inboxMessage.getPayload());
+                fileService.convertFile(inboxMessage.getPayLoad());
                 inboxMessage.setProceed(true);
                 inboxMessage.setProcessedAt(Instant.now());
             }
@@ -51,7 +51,9 @@ public class ConvertScheduler {
     @Scheduled(fixedDelayString = "${app.scheduler.rate-ms}")
     @SchedulerLock(name = "outboxPublisher", lockAtMostFor = "PT30S", lockAtLeastFor = "PT1S")
     public void handleEventToSend(){
-        List<OutBoxMessage> outBoxMessageList = outBoxMessageRepository.findBySentFalseAndRetryCountLessThan(Constants.MAX_RETRY_CONSUMER);
+        List<OutBoxMessage> outBoxMessageList = outBoxMessageRepository.findBySentFalseAndRetryCountLessThan(
+                Constants.MAX_RETRY_CONSUMER,PageRequest.of(0,Constants.BATCHSIZE));
+
         for(OutBoxMessage outBoxMessage: outBoxMessageList){
             try{
                 String key = String.format("User-%d",outBoxMessage.getUserId());
@@ -64,11 +66,11 @@ public class ConvertScheduler {
             catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 markFailed(outBoxMessage);
-                throw new FailedException("Отправка в Kafka прервана", e);
+                return;
+
             } catch (ExecutionException | TimeoutException e) {
                 markFailed(outBoxMessage);
                 log.error("Не удалось отправить outbox-сообщение {} в Kafka", outBoxMessage.getId(), e);
-                throw new FailedException("Не удалось отправить сообщение в Kafka", e);
             }
         }
     }

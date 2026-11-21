@@ -36,44 +36,43 @@ public class FileService {
 
     private void process(String fileName,byte[] content,int depth){
         String type = detect(content,fileName);
-        if(type.equals(Constants.ZIP_TYPE)){
-            processZip(fileName,content,depth);
-            return;
-        }
-        Converter converter = findConverter(fileName,content);
-        byte[] convertedFile = converter.convert(content);
-        String newFileName = makeName(fileName);
 
-        minioService.uploadFile(newFileName,convertedFile);
-        try {
-            OutBoxMessage outBoxMessage = new OutBoxMessage();
-            outBoxMessage.setPublishAt(Instant.now());
-            outBoxMessage.setPlayLoad(newFileName);
-            outBoxMessageRepository.save(outBoxMessage);
-        }
-        catch (RuntimeException exception){
-            minioService.removeFile(newFileName);
-            throw new FailedException("Не удалось сохранить outbox для файла: " + newFileName, exception);
-        }
+            if (Constants.ZIP_TYPE.equals(type)) {
+                processZip(fileName, content, depth);
+                return;
+            }
+            Converter converter = findConverter(type,fileName);
+            byte[] convertedFile = converter.convert(content);
+            String newFileName = makeName(fileName);
 
+            minioService.uploadFile(newFileName, convertedFile);
+            try {
+                OutBoxMessage outBoxMessage = new OutBoxMessage();
+                outBoxMessage.setPublishAt(Instant.now());
+                outBoxMessage.setPlayLoad(newFileName);
+                outBoxMessageRepository.save(outBoxMessage);
+            } catch (RuntimeException exception) {
+                minioService.removeFile(newFileName);
+                throw new FailedException("Не удалось сохранить outbox для файла: " + newFileName, exception);
+            }
     }
 
-    private Converter findConverter(String fileName,byte[] content){
+    private Converter findConverter(String type,String fileName){
         return converters.stream()
-                .filter(s->s.supportsFile(detect(content,fileName)))
+                .filter(s->s.supportsFile(type))
                 .findFirst().orElseThrow(() -> new IllegalArgumentException(
                         "Конвертация не возможна для этого файла: " + fileName));
     }
 
     private String makeName(String name){
-        int slash = name.lastIndexOf('/');
-        int dot = name.lastIndexOf('.');
+        int slash = name.lastIndexOf(Constants.SLASH);
+        int dot = name.lastIndexOf(Constants.DOT);
         String base = dot > slash ? name.substring(0, dot) : name;
-        return base+".pdf";
+        return base+Constants.PDF_EXTENSION;
     }
     private String baseName(String name) {
-        int slash = name.lastIndexOf('/');
-        int dot = name.lastIndexOf('.');
+        int slash = name.lastIndexOf(Constants.SLASH);
+        int dot = name.lastIndexOf(Constants.DOT);
         return dot > slash ? name.substring(0, dot) : name;
     }
 
@@ -81,18 +80,18 @@ public class FileService {
         if (depth >= Constants.MAX_ZIP_DEPTH) {
             throw new IllegalArgumentException("Слишком глубокая вложенность архивов: " + depth);
         }
-        String prefix = baseName(filePath) + "/";
+        String prefix = baseName(filePath) + Constants.STRING_SLASH;
 
         try(ZipInputStream zipInputStream = new ZipInputStream(new ByteArrayInputStream(content))){
             ZipEntry zipEntry;
             while((zipEntry = zipInputStream.getNextEntry())!=null){
                 String name = zipEntry.getName();
-                if (zipEntry.isDirectory() || name.contains("..")||name.startsWith("/")) {
+                if (zipEntry.isDirectory() || name.contains(Constants.TWO_DOT)||name.startsWith(Constants.STRING_SLASH)) {
                     continue;
                 }
                 byte[] data = zipInputStream.readAllBytes();
                 try{
-                    process(name+prefix,data,depth+1);
+                    process(prefix+name,data,depth+1);
                 }
                 catch (IllegalArgumentException exception){
                     log.warn("Файл {} из архива пропущен {}",zipEntry.getName(),exception.getMessage());

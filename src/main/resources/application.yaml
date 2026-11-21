@@ -30,4 +30,4 @@ app:
       convert-results: convert-results
       convert-success-result: convert-success-event
   scheduler:
-    rate-ms: 1000
+    rate-ms: 5000

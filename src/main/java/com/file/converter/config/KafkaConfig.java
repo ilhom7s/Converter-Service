@@ -9,18 +9,22 @@ import org.springframework.kafka.config.TopicBuilder;
 
 @Configuration
 public class KafkaConfig {
+    @Value("${app.kafka.topics.convert-requests}")
+    private String convertFileTopicName;
+
+    @Value("${app.kafka.convert-success-result}")
+    private String convertSuccessTopicName;
+
     @Bean
-    public NewTopic convertFiles(
-            @Value("${app.kafka.topics.convert-requests}")String name){
-        return TopicBuilder.name(name)
+    public NewTopic convertFiles(){
+        return TopicBuilder.name(convertFileTopicName)
                 .partitions(3)
                 .replicas(3)
                 .build();
     }
     @Bean
-    public NewTopic convertSuccessTopic(
-            @Value("${app.kafka.convert-success-result}") String name){
-        return TopicBuilder.name(name)
+    public NewTopic convertSuccessTopic(){
+        return TopicBuilder.name(convertSuccessTopicName)
                 .partitions(3)
                 .replicas(3)
                 .build();
